@@ -1,3 +1,4 @@
 [submodule "RLBench"]
 	path = RLBench
 	url = git@github.com:SimonReese/RLBench.git
+	branch = master
