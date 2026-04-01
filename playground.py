@@ -1,9 +1,12 @@
+from typing import Literal
+
 from RLBench.rlbench.action_modes.action_mode import IdleActionMode
 from RLBench.rlbench.environment import Environment
 from RLBench.rlbench.tasks import PushButton
-from RLBench.rlbench.tasks import SPATIAL_TASKS
+from RLBench.rlbench.tasks import SPATIAL_TASKS, SpatialTasks
 
-def main():
+def main(): 
+    
 
     act_mode = IdleActionMode()
 
@@ -12,7 +15,7 @@ def main():
     env.launch()
 
     # Load task
-    task = env.get_task(SPATIAL_TASKS[0])
+    task = env.get_task(SpatialTasks.SLIDE_BLOCK)
     task.reset()
     
     # Act
