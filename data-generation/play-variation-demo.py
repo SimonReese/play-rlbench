@@ -104,6 +104,11 @@ def delta_pose_ee(p_cur, q_cur, p_des, q_des):
 
     return numpy.hstack((p_delta, q_delta))
 
+def euler_from_quaternion(quaternion: numpy.ndarray) -> numpy.ndarray:
+    rotation = Rotation.from_quat(quaternion)
+    angles = rotation.as_euler("xyz")
+    return angles
+
 # ------------------------
 
 
@@ -161,6 +166,7 @@ for task_name in tasks_list:
                 new_pose = obs.gripper_pose
                 delta_action = delta_pose_ee(old_pose[:3], old_pose[3:], new_pose[:3], new_pose[3:])
                 print(f"Start: {old_pose}\nTarget: {new_pose}\nDelta: {delta_action}")
+                print(f"Rotation will be {quaternion_to_euler(delta_action[3:])}")
                 _local_obs, reward, done = task.step(numpy.concatenate((delta_action, [obs.gripper_open])))
                 old_pose = _local_obs.gripper_pose
             print(f"Task done")
