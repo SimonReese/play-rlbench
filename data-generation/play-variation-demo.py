@@ -69,9 +69,6 @@ def quaternion_multiplication(q1, q2):
         w1*w2 - x1*x2 - y1*y2 - z1*z2
     ])
 
-def quaternion_to_euler(quaternion: numpy.ndarray, format = "xyzw") -> numpy.ndarray:
-    pass
-
 
 # --------------------
 def pose_to_T(p, q):
@@ -104,10 +101,15 @@ def delta_pose_ee(p_cur, q_cur, p_des, q_des):
 
     return numpy.hstack((p_delta, q_delta))
 
-def euler_from_quaternion(quaternion: numpy.ndarray) -> numpy.ndarray:
+def quaternion_to_euler(quaternion: numpy.ndarray) -> numpy.ndarray:
     rotation = Rotation.from_quat(quaternion)
     angles = rotation.as_euler("xyz")
     return angles
+
+def euler_to_quaternion(euler: numpy.ndarray, format: str = "xyz") -> numpy.ndarray:
+    rotation = Rotation.from_euler(format, euler)
+    quaternion = rotation.as_quat()
+    return quaternion
 
 # ------------------------
 
@@ -138,7 +140,7 @@ print(f"Shape {env.action_shape}")
     assert env._scene is not None and env._scene.pyrep is not None
     env._scene.pyrep.step()"""
 
-dataset  = "/home/peraro/source/play-rlbench/data-generation/datasets/generated-13-04-16-00"
+dataset  = "/home/peraro/source/play-rlbench/data-generation/datasets/generated-14-04-11-42"
 tasks_list = os.listdir(dataset)
 
 # Open all tasks envs
@@ -167,6 +169,7 @@ for task_name in tasks_list:
                 delta_action = delta_pose_ee(old_pose[:3], old_pose[3:], new_pose[:3], new_pose[3:])
                 print(f"Start: {old_pose}\nTarget: {new_pose}\nDelta: {delta_action}")
                 print(f"Rotation will be {quaternion_to_euler(delta_action[3:])}")
+                print(f"Description {description}")
                 _local_obs, reward, done = task.step(numpy.concatenate((delta_action, [obs.gripper_open])))
                 old_pose = _local_obs.gripper_pose
             print(f"Task done")
