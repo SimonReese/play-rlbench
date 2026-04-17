@@ -3,8 +3,7 @@ This file s consider a dir structure like peract dataset to open each specific v
 There can still be differences in things like colours
 """
 
-from multiprocessing import dummy
-from typing import List
+from typing import List, Union
 import pickle
 
 import os
@@ -70,7 +69,7 @@ def quaternion_multiplication(q1, q2):
     ])
 
 
-# --------------------
+# ---------QUATERNIONS UTILITY-----------
 def pose_to_T(p, q):
     T = numpy.eye(4)
     T[:3, :3] = Rotation.from_quat(q).as_matrix()
@@ -111,7 +110,27 @@ def euler_to_quaternion(euler: numpy.ndarray, format: str = "xyz") -> numpy.ndar
     quaternion = rotation.as_quat()
     return quaternion
 
-# ------------------------
+# ---------OTHER UTILITY---------------
+def pretty_print_array(data: numpy.ndarray, printout=False, label="") -> Union[numpy.ndarray , None]:
+    pretty = data.clip(min=1e-3)
+    if printout:
+        print(f"{label}{pretty}")
+        return
+    return pretty
+
+def get_open_amount(gripper_joint_positions: numpy.ndarray) -> List[float]:
+        """Gets the gripper open state. 1 means open, whilst 0 means closed.
+
+        :return: A list of floats between 0 and 1 representing the gripper open
+            state for each joint. 1 means open, whilst 0 means closed.
+        """
+        _, joint_intervals_list = ([False, False], [[0.0, 0.03999999910593033], [0.0, 0.03999999910593033]]) #self.get_joint_intervals()
+        joint_intervals = numpy.array(joint_intervals_list)
+        joint_range = joint_intervals[:, 1] - joint_intervals[:, 0]
+        return list(numpy.clip((numpy.array(
+            gripper_joint_positions) - joint_intervals[:, 0]) /
+                            joint_range, 0.0, 1.0))
+# ----------------------
 
 
 class IdleAction(ActionMode):
@@ -126,7 +145,8 @@ obs_config = ObservationConfig(
     right_shoulder_camera= cam_config,
     overhead_camera= cam_config,
     wrist_camera= cam_config,
-    front_camera= cam_config
+    front_camera= cam_config,
+    gripper_joint_positions=True
 )
 arm_action_mode = EndEffectorPoseViaPlanning(absolute_mode=False, frame=RelativeFrame.EE)
 act = MoveArmThenGripper(arm_action_mode=arm_action_mode, gripper_action_mode=Discrete())
@@ -140,7 +160,7 @@ print(f"Shape {env.action_shape}")
     assert env._scene is not None and env._scene.pyrep is not None
     env._scene.pyrep.step()"""
 
-dataset  = "/home/peraro/source/play-rlbench/data-generation/datasets/generated-14-04-11-42"
+dataset  = "/home/peraro/source/play-rlbench/data-generation/datasets/generated-16-04-00-00"
 tasks_list = os.listdir(dataset)
 
 # Open all tasks envs
@@ -162,14 +182,18 @@ for task_name in tasks_list:
         for num, demo in enumerate(episodes):
             print(f"Opening episode {num}")
             description , _local_obs = task.reset_to_demo(demo)
+            print(f"Description {description}")
             old_pose = _local_obs.gripper_pose
             # Reproduce each step
             for obs in demo:
                 new_pose = obs.gripper_pose
                 delta_action = delta_pose_ee(old_pose[:3], old_pose[3:], new_pose[:3], new_pose[3:])
-                print(f"Start: {old_pose}\nTarget: {new_pose}\nDelta: {delta_action}")
-                print(f"Rotation will be {quaternion_to_euler(delta_action[3:])}")
-                print(f"Description {description}")
+                print(f"Gripper joint positions {pretty_print_array(obs.gripper_joint_positions)}, is open: {obs.gripper_open}")
+                print(f"Open amount{get_open_amount(obs.gripper_joint_positions)[0]} {obs.gripper_open=}")
+                print(f"Joint Intervals{task._scene.robot.gripper.get_joint_intervals()}")
+                #print(f"Start: {old_pose}\nTarget: {new_pose}\nDelta: {delta_action}")
+                #print(f"Rotation will be {pretty_print_array(quaternion_to_euler(delta_action[3:]))}")
+                
                 _local_obs, reward, done = task.step(numpy.concatenate((delta_action, [obs.gripper_open])))
                 old_pose = _local_obs.gripper_pose
             print(f"Task done")
