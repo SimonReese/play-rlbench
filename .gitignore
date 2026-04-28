@@ -2,3 +2,4 @@
 assets
 tasks
 data-generation/datasets/*
+experiments/results/*

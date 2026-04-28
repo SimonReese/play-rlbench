@@ -1,23 +1,139 @@
+from dataclasses import dataclass
+import os
 import time
-from typing import List
+from turtle import st
+from typing import List, Union
 
+import imageio
 import numpy
+import rlbench.utils
 from rlbench.action_modes.action_mode import MoveArmThenGripper
 from rlbench.action_modes.arm_action_modes import EndEffectorPoseViaPlanning, RelativeFrame
 from rlbench.action_modes.gripper_action_modes import Discrete
+from rlbench.backend.exceptions import InvalidActionError
+from rlbench.demo import Demo
 from rlbench.environment import Environment
 from rlbench.observation_config import CameraConfig, ObservationConfig
 from rlbench.tasks import SpatialTasks
 
 import openpi_client.websocket_client_policy
 
+from scipy import stats
 from scipy.spatial.transform import Rotation
+from pathlib import Path
 
+# Environment
+HEADLESS = True
 
-TASK = SpatialTasks.OBJECT_CONTAINER
-IP = "127.0.0.1"
+IP = "titan2.dei.unipd.it"
 PORT = 4900
 
+DATASET_PATH = "/home/peraro/source/play-rlbench/data-generation/datasets/generated-20ep"
+
+SAVE_STATS = True
+SAVE_VIDEO = True
+STATS_PATH =  Path("/home/peraro/source/play-rlbench/experiments/results/", Path(DATASET_PATH).name)  
+VIDEO_PATH = Path("/home/peraro/source/play-rlbench/experiments/results/", Path(DATASET_PATH).name)
+
+
+# Get list of variations for task
+def get_variations_ids(dataset_path: str, task_name:str, VARIATION_FOLDER_PREFIX = "variation") -> List[int]:
+    # Open variation
+    VARIATION_FOLDER_PREFIX = "variation"
+    variation_folders = os.listdir(os.path.join(dataset_path, task_name))
+    if "all_variations" in variation_folders: variation_folders.remove("all_variations")
+    variation_ids = []
+    id: int = 0
+    while len(variation_ids) != len(variation_folders):
+        if f"{VARIATION_FOLDER_PREFIX}{id}" in variation_folders:
+            variation_ids.append(id)
+        id += 1
+    return variation_ids
+
+def exec_task(env: Environment, task_name: str, remote_model,  variation: Union[int, None] = None, demo: Union[Demo, None] = None, demo_idx = None,
+              save_stats = True, save_video = False, stats_path = None, video_path = None,
+              stat_filename = "stats.txt"
+              ):
+    
+    # Manage stats paths
+    if save_stats:
+        if stats_path == None: # Default stats path
+            stats_path = Path("./", stat_filename)
+        else:
+            stats_path = Path(stats_path)
+            stats_path.mkdir(parents=True, exist_ok=True)
+            stats_path.joinpath(stat_filename)
+    
+    # Manage video path
+    if save_video:
+        if video_path == None:
+            video_path = Path("./")
+        else:
+            video_path = Path(video_path, task_name, "variation" + str(variation), "episode" + str(demo_idx))
+            video_path.mkdir(parents=True, exist_ok=True)
+
+
+    # Open task
+    task = rlbench.utils.name_to_task_class(task_name)
+    task = env.get_task(task)
+    task.set_variation(variation if variation is not None else 0)
+    instr, obs = task.reset(demo)
+    # Let the simulation step a little
+    for _ in range(10):
+        obs, _, _ = task.step([0.0001, 0.0001, 0.0001, 0.0, 0.0, 0.0, 1.0, 0.99])
+    
+    print(instr)
+    start_time = time.time()
+    success = False
+    front_camera_images = []
+    wrist_images = []
+    while time.time() - start_time < 60:
+        front_img = numpy.ascontiguousarray(obs.front_rgb)
+        wrist_img = numpy.ascontiguousarray(obs.wrist_rgb)
+        gripper_open_amount = get_panda_gripper_open_amount(obs.gripper_joint_positions)[0]
+        robot_state = numpy.concatenate((obs.joint_positions, [gripper_open_amount]), dtype=numpy.float32)
+        # Pack obs
+        packet = {
+            "observation/image": front_img,
+            "observation/wrist_image": wrist_img,
+            "observation/state": robot_state,
+            "instruction": instr[0]
+        }
+        action_chunk = remote_model.infer(packet)["actions"]
+        
+        for action in action_chunk:
+            front_camera_images.append(obs.front_rgb)
+            wrist_images.append(obs.wrist_rgb)
+            # temp fix for wrong output size
+            action_padded = action[:-1]
+            delta = action_padded[:3]
+            rot_euler = action_padded[3:6]
+            gripper_aperture = action_padded[-1]
+            if gripper_aperture < 0.8: gripper_aperture = 0.0
+            rot_quat = euler_to_quaternion(rot_euler)
+            act = numpy.concatenate((delta, rot_quat, [gripper_aperture]))
+            
+            try:
+                obs, reward, success = task.step(act)
+            except InvalidActionError:
+                print("Cannot reach")
+                obs = task.get_observation()
+                break
+        if success: break
+
+    # write stats
+    if save_stats:
+        with open(stats_path._str + "/" + stat_filename, "a") as stats_file:
+            stats_file.write(f"{task_name}:variation{variation}:episode{demo_idx}:{success} {instr[0]}\n")
+            stats_file.flush()
+    
+    if save_video:
+        with imageio.get_writer(video_path._str + "/front_cam.mp4") as vid:
+            for frame in front_camera_images:
+                vid.append_data(frame)
+        with imageio.get_writer(video_path._str + "/wrist_cam.mp4") as vid:
+            for frame in wrist_images:
+                vid.append_data(frame)
 
 def main():
     remote_model = openpi_client.websocket_client_policy.WebsocketClientPolicy(IP, PORT)
@@ -33,48 +149,27 @@ def main():
         gripper_joint_positions= True
     )
     action_mode = MoveArmThenGripper(arm_action_mode=EndEffectorPoseViaPlanning(absolute_mode=False, frame=RelativeFrame.EE), gripper_action_mode=Discrete())
-    env = Environment(action_mode=action_mode, obs_config=obs_config)
+    env = Environment(action_mode=action_mode, obs_config=obs_config, headless=HEADLESS)
     env.launch()
-    # Open task
-    task = env.get_task(TASK)
-    task.set_variation(0)
-    instr, obs = task.reset()
-    # Let the simulation step a little
-    for _ in range(10):
-        obs, _, _ = task.step([0.0001, 0.0001, 0.0001, 0.0, 0.0, 0.0, 1.0, 0.99])
     
-    print(instr)
-    start_time = time.time()
-    success = False
-    while time.time() - start_time < 2000:
-        front_img = numpy.ascontiguousarray(obs.front_rgb)
-        wrist_img = numpy.ascontiguousarray(obs.wrist_rgb)
-        gripper_open_amount = get_panda_gripper_open_amount(obs.gripper_joint_positions)[0]
-        robot_state = numpy.concatenate((obs.joint_positions, [gripper_open_amount]), dtype=numpy.float32)
-        # Pack obs
-        packet = {
-            "observation/image": front_img,
-            "observation/wrist_image": wrist_img,
-            "observation/state": robot_state,
-            "instruction": instr[0]
-        }
-        action_chunk = remote_model.infer(packet)["actions"]
+    task_list = os.listdir(DATASET_PATH)
+    for task_name in task_list:
+        print(f"Opening task {task_name}")
         
-        for action in action_chunk:
-            # temp fix for wrong output size
-            action_padded = action[:-1]
-            delta = action_padded[:3]
-            rot_euler = action_padded[3:6]
-            gripper_aperture = action_padded[-1]
-
-            rot_quat = euler_to_quaternion(rot_euler)
-            act = numpy.concatenate((delta, rot_quat, [gripper_aperture]))
+        variations_ids = get_variations_ids(DATASET_PATH, task_name)
+        # Open each variation
+        for variation in variations_ids:
+            print("Opening variation ", variation)
+            # Get all episodes in variation
+            episodes_demos = rlbench.utils.get_stored_demos(amount=-1, image_paths=True, dataset_root=DATASET_PATH, 
+                                        variation_number=variation, task_name=task_name,obs_config=obs_config, random_selection=False)
             
-            obs, reward, success = task.step(act)
-        
-        if success: break
+            for idx, demo in enumerate(episodes_demos):
+                exec_task(env, task_name, remote_model, variation, demo, idx,
+                          SAVE_STATS, SAVE_VIDEO, stats_path=str(STATS_PATH), video_path=str(VIDEO_PATH))
+                
 
-        
+    
 
 
 # OTHER FUNCTIONS
