@@ -1,3 +1,4 @@
+import time
 from typing import Literal
 
 from RLBench.rlbench.action_modes.action_mode import IdleActionMode
@@ -5,13 +6,15 @@ from RLBench.rlbench.environment import Environment
 from RLBench.rlbench.tasks import PushButton
 from RLBench.rlbench.tasks import SPATIAL_TASKS, SpatialTasks
 
+import imageio
+
 def main(): 
     
 
     act_mode = IdleActionMode()
 
     # Start env
-    env = Environment(act_mode)
+    env = Environment(act_mode, headless=True)
     env.launch()
 
     # Load task
@@ -19,8 +22,17 @@ def main():
     task.reset()
     
     # Act
-    while True:
-        obs, reward, done = task.step([])
+    start = time.time()
+    frames = []
+    demos = task.get_demos(1, True)
+    demo = demos.pop()
+    for obs in demo:
+        frames.append(obs.front_rgb)
+        print(demo.demo_description)
+    # while time.time() - start < 5:
+    #     obs, reward, done = task.step([])
+    #     frames.append(obs.front_rgb)
+    imageio.mimsave('output.mp4', frames, fps=30)
 
     
 

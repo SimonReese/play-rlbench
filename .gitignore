@@ -3,3 +3,4 @@ assets
 tasks
 data-generation/datasets/*
 experiments/results/*
+openpi-client/src/openpi_client/__pycache__/*
