@@ -2,11 +2,11 @@
 
 #ROOT = "../"
 
-SAVE_PATH="./data-generation/datasets/generated-14-04-11-42/"
+SAVE_PATH="./data-generation/datasets/generated-20ep/"
 TASKS=("cube_container" "object_container" "container_place")
 IMG_SIZE="224 224"
 PROCESSES=1
-EP_TASK=10
+EP_TASK=20
 VARIATIONS=-1
 ARM_ACTION_MODE="JointVelocity" # Even if we add custom environment arm action mode in dataset_generator, the observations still have gripper tip position wrt world
 
