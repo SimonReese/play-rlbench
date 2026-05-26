@@ -37,20 +37,6 @@ def load_demos(dataset_path: str, task_name:str, variation_id:int , VARIATION_FO
 
     return demos
 
-# Get list of variations for task
-def get_variations_ids(dataset_path: str, task_name:str, VARIATION_FOLDER_PREFIX = "variation") -> List[int]:
-    # Open variation
-    VARIATION_FOLDER_PREFIX = "variation"
-    variation_folders = os.listdir(os.path.join(dataset_path, task_name))
-    if "all_variations" in variation_folders: variation_folders.remove("all_variations")
-    variation_ids = []
-    id: int = 0
-    while len(variation_ids) != len(variation_folders):
-        if f"{VARIATION_FOLDER_PREFIX}{id}" in variation_folders:
-            variation_ids.append(id)
-        id += 1
-    return variation_ids
-
 def invert_quaternion(quaternion: numpy.ndarray, format = "xyzw") -> numpy.ndarray:
     if format == "xyzw":
         return numpy.array([-quaternion[0], -quaternion[1], -quaternion[2], quaternion[3]]) / numpy.dot(quaternion, quaternion)
@@ -169,7 +155,7 @@ for task_name in tasks_list:
     task_class = rlbench.utils.name_to_task_class(task_name)
     task = env.get_task(task_class)
 
-    variations_ids = get_variations_ids(dataset, task_name)
+    variations_ids = rlbench.utils.get_variations_ids(dataset, task_name)
     # Open each variation
     for variation in variations_ids:
         print("Opening variation ", variation)
