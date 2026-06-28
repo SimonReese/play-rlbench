@@ -33,21 +33,6 @@ SAVE_VIDEO = True
 STATS_PATH =  Path("/home/peraro/source/play-rlbench/experiments/results/openvla", Path(DATASET_PATH).name)  
 VIDEO_PATH = Path("/home/peraro/source/play-rlbench/experiments/results/openvla", Path(DATASET_PATH).name)
 
-
-# Get list of variations for task
-def get_variations_ids(dataset_path: str, task_name:str, VARIATION_FOLDER_PREFIX = "variation") -> List[int]:
-    # Open variation
-    VARIATION_FOLDER_PREFIX = "variation"
-    variation_folders = os.listdir(os.path.join(dataset_path, task_name))
-    if "all_variations" in variation_folders: variation_folders.remove("all_variations")
-    variation_ids = []
-    id: int = 0
-    while len(variation_ids) != len(variation_folders):
-        if f"{VARIATION_FOLDER_PREFIX}{id}" in variation_folders:
-            variation_ids.append(id)
-        id += 1
-    return variation_ids
-
 def exec_task(env: Environment, task_name: str, variation: Union[int, None] = None, demo: Union[Demo, None] = None, demo_idx = None,
               save_stats = True, save_video = False, stats_path = None, video_path = None,
               stat_filename = "stats.txt"
@@ -103,7 +88,7 @@ def exec_task(env: Environment, task_name: str, variation: Union[int, None] = No
         gripper_aperture = action[-1]
         #print(f"Action :{delta}, {rot_euler}, {gripper_aperture}")
         if gripper_aperture < 0.8: gripper_aperture = 0.0
-        rot_quat = euler_to_quaternion(rot_euler)
+        rot_quat = rlbench.utils.euler_to_quaternion(rot_euler)
         act = numpy.concatenate((delta, rot_quat, [gripper_aperture]))
             
         try:
@@ -144,7 +129,7 @@ def main():
     for task_name in task_list:
         print(f"Opening task {task_name}")
         
-        variations_ids = get_variations_ids(DATASET_PATH, task_name)
+        variations_ids = rlbench.utils.get_variations_ids(DATASET_PATH, task_name)
         # Open each variation
         for variation in variations_ids:
             print("Opening variation ", variation)
@@ -156,37 +141,6 @@ def main():
                 exec_task(env, task_name, variation, demo, idx,
                           SAVE_STATS, SAVE_VIDEO, stats_path=str(STATS_PATH), video_path=str(VIDEO_PATH))
                 
-
-    
-
-
-# OTHER FUNCTIONS
-
-def get_panda_gripper_open_amount(gripper_joint_positions: numpy.ndarray) -> List[float]:
-    """Gets the gripper open state for the panda gripper. 1 means open, whilst 0 means closed.
-
-    PANDA_JOINT_INTERVALS_LIST = [
-        [0.0, 0.03999999910593033],
-        [0.0, 0.03999999910593033]
-    ]
-
-    :param gripper_joint_positions: numpy.ndarray containing the current position of the gripper joints
-
-    :return: A list of floats between 0 and 1 representing the gripper open
-        state for each joint. 1 means open, whilst 0 means closed.
-    """
-    PANDA_JOINT_INTERVALS_LIST = [[0.0, 0.03999999910593033], [0.0, 0.03999999910593033]]
-    joint_intervals_list = PANDA_JOINT_INTERVALS_LIST
-    joint_intervals = numpy.array(joint_intervals_list)
-    joint_range = joint_intervals[:, 1] - joint_intervals[:, 0]
-    return list(numpy.clip((numpy.array(
-        gripper_joint_positions) - joint_intervals[:, 0]) /
-                        joint_range, 0.0, 1.0))
-
-def euler_to_quaternion(euler: numpy.ndarray, format: str = "xyz") -> numpy.ndarray:
-    rotation = Rotation.from_euler(format, euler)
-    quaternion = rotation.as_quat()
-    return quaternion
 
 if __name__== "__main__" :
     main()
