@@ -2,3 +2,6 @@
 	path = RLBench
 	url = git@github.com:SimonReese/RLBench.git
 	branch = master
+[submodule "exp-viewer"]
+	path = exp-viewer
+	url = git@github.com:SimonReese/exp-viewer.git
